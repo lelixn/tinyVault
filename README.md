@@ -1,6 +1,6 @@
 <div align="center">
 
-<img width="498" height="498" alt="Cat Computer GIF - Cat Computer Fix - Descubre y comparte GIF" src="https://github.com/user-attachments/assets/dde063d3-65c2-4738-a8a2-00054cacb288" />
+<img width="230" height="230" alt="Cat Computer GIF - Cat Computer Fix - Descubre y comparte GIF" src="https://github.com/user-attachments/assets/dde063d3-65c2-4738-a8a2-00054cacb288" />
 
 
 # 🔒 TinyVault
