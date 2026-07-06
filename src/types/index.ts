@@ -18,6 +18,18 @@ export interface Secret {
   updatedAt: string;
 }
 
+export type CreateSecretInput = {
+  title: string;
+  value: string;
+  category: Exclude<SecretCategory, 'All'>;
+  notes?: string;
+  pinned?: boolean;
+};
+
+export type UpdateSecretInput = Partial<
+  Pick<Secret, 'title' | 'value' | 'category' | 'notes' | 'pinned'>
+>;
+
 export interface Category {
   id: string;
   label: SecretCategory;

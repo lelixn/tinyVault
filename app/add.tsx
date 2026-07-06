@@ -22,9 +22,11 @@ import {
 import { CATEGORIES, CATEGORY_COLORS } from '../src/utils/mockData';
 import { SecretCategory } from '../src/types';
 import { Colors, FontFamily, FontSize, Border, Spacing, IconSize } from '../src/constants';
+import { useSecrets } from '../src/hooks/useSecrets';
 
 export default function AddScreen() {
   const router = useRouter();
+  const { createSecret } = useSecrets();
 
   const [title, setTitle] = useState('');
   const [secretValue, setSecretValue] = useState('');
@@ -45,8 +47,17 @@ export default function AddScreen() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!validate()) return;
+
+    await createSecret({
+      title,
+      value: secretValue,
+      category,
+      notes: notes.trim() || undefined,
+      pinned,
+    });
+
     setShowToast(true);
     setTimeout(() => router.back(), 1500);
   };

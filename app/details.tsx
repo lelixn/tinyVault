@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -30,25 +30,47 @@ import {
   PixelCheckbox,
   Divider,
 } from '../src/components';
-import { MOCK_SECRETS } from '../src/utils/mockData';
 import { Colors, FontFamily, FontSize, Border, Spacing, IconSize } from '../src/constants';
-import { Secret } from '../src/types';
+import { useSecrets } from '../src/hooks/useSecrets';
+import { copyToClipboard } from '../src/utils/clipboard';
 
 export default function DetailsScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { getSecret, updateSecret, deleteSecret, isReady } = useSecrets();
 
-  const secret = MOCK_SECRETS.find((s) => s.id === id) || MOCK_SECRETS[0];
+  const secretId = Array.isArray(id) ? id[0] : id;
+  const secret = secretId ? getSecret(secretId) : undefined;
 
   const [revealed, setRevealed] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [toastMsg, setToastMsg] = useState('✓ Copied!');
   const [showDelete, setShowDelete] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
-  const [editTitle, setEditTitle] = useState(secret.title);
-  const [editValue, setEditValue] = useState(secret.value);
-  const [editNotes, setEditNotes] = useState(secret.notes || '');
-  const [editPinned, setEditPinned] = useState(secret.pinned);
+  const [editTitle, setEditTitle] = useState('');
+  const [editValue, setEditValue] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+  const [editPinned, setEditPinned] = useState(false);
+
+  useEffect(() => {
+    if (isReady && secretId && !secret) {
+      router.back();
+    }
+  }, [isReady, secretId, secret, router]);
+
+  useEffect(() => {
+    if (secret) {
+      setEditTitle(secret.title);
+      setEditValue(secret.value);
+      setEditNotes(secret.notes || '');
+      setEditPinned(secret.pinned);
+      setRevealed(false);
+    }
+  }, [secret]);
+
+  if (!secret) {
+    return null;
+  }
 
   const maskedValue = '•'.repeat(Math.min(secret.value.length, 24));
 
@@ -61,13 +83,28 @@ export default function DetailsScreen() {
     });
   };
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
+    await copyToClipboard(secret.value);
     setToastMsg('✓ Copied to Clipboard');
     setShowToast(true);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
+    await deleteSecret(secret.id);
+    setShowDelete(false);
     router.back();
+  };
+
+  const handleEditSave = async () => {
+    await updateSecret(secret.id, {
+      title: editTitle,
+      value: editValue,
+      notes: editNotes,
+      pinned: editPinned,
+    });
+    setShowEdit(false);
+    setToastMsg('✓ Secret Updated');
+    setShowToast(true);
   };
 
   return (
@@ -272,11 +309,7 @@ export default function DetailsScreen() {
           />
           <PixelButton
             label="Save"
-            onPress={() => {
-              setShowEdit(false);
-              setToastMsg('✓ Secret Updated');
-              setShowToast(true);
-            }}
+            onPress={handleEditSave}
             variant="primary"
             style={styles.editBtn}
           />

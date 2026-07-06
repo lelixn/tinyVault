@@ -23,15 +23,18 @@ import {
   PixelButton,
   PixelCheckbox,
 } from '../src/components';
-import { MOCK_SECRETS, CATEGORIES } from '../src/utils/mockData';
+import { CATEGORIES } from '../src/utils/mockData';
 import { Secret, SecretCategory } from '../src/types';
 import { Colors, FontFamily, FontSize, Border, Spacing, IconSize } from '../src/constants';
+import { useSecrets } from '../src/hooks/useSecrets';
+import { filterSecrets } from '../src/utils/secrets';
+import { copyToClipboard } from '../src/utils/clipboard';
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { secrets, updateSecret, deleteSecret } = useSecrets();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<SecretCategory>('All');
-  const [secrets, setSecrets] = useState<Secret[]>(MOCK_SECRETS);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('✓ Copied Successfully');
   const [deleteDialog, setDeleteDialog] = useState<{ visible: boolean; secretId: string | null }>({
@@ -47,20 +50,13 @@ export default function HomeScreen() {
   const [editNotes, setEditNotes] = useState('');
   const [editPinned, setEditPinned] = useState(false);
 
-  // Filtered secrets
-  const filteredSecrets = useMemo(() => {
-    return secrets.filter((s) => {
-      const matchesCategory =
-        selectedCategory === 'All' || s.category === selectedCategory;
-      const matchesSearch =
-        searchQuery.trim() === '' ||
-        s.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        s.category.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesCategory && matchesSearch;
-    });
-  }, [secrets, selectedCategory, searchQuery]);
+  const filteredSecrets = useMemo(
+    () => filterSecrets(secrets, searchQuery, selectedCategory),
+    [secrets, searchQuery, selectedCategory]
+  );
 
-  const handleCopy = (value: string) => {
+  const handleCopy = async (value: string) => {
+    await copyToClipboard(value);
     setToastMessage('✓ Copied Successfully');
     setShowToast(true);
   };
@@ -69,10 +65,12 @@ export default function HomeScreen() {
     setDeleteDialog({ visible: true, secretId });
   };
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
     if (deleteDialog.secretId) {
-      setSecrets((prev) => prev.filter((s) => s.id !== deleteDialog.secretId));
+      await deleteSecret(deleteDialog.secretId);
       setDeleteDialog({ visible: false, secretId: null });
+      setToastMessage('✓ Secret Deleted');
+      setShowToast(true);
     }
   };
 
@@ -84,22 +82,14 @@ export default function HomeScreen() {
     setEditModal({ visible: true, secret });
   };
 
-  const handleEditSave = () => {
+  const handleEditSave = async () => {
     if (editModal.secret) {
-      setSecrets((prev) =>
-        prev.map((s) =>
-          s.id === editModal.secret!.id
-            ? {
-                ...s,
-                title: editTitle,
-                value: editValue,
-                notes: editNotes,
-                pinned: editPinned,
-                updatedAt: new Date().toISOString(),
-              }
-            : s
-        )
-      );
+      await updateSecret(editModal.secret.id, {
+        title: editTitle,
+        value: editValue,
+        notes: editNotes,
+        pinned: editPinned,
+      });
       setEditModal({ visible: false, secret: null });
       setToastMessage('✓ Secret Updated');
       setShowToast(true);

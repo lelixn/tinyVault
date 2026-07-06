@@ -10,6 +10,7 @@ import {
 } from '@expo-google-fonts/pixelify-sans';
 import * as SplashScreen from 'expo-splash-screen';
 import { Colors } from '../src/constants';
+import { SecretsProvider } from '../src/hooks/useSecrets';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -32,7 +33,7 @@ export default function RootLayout() {
   }
 
   return (
-    <>
+    <SecretsProvider>
       <StatusBar style="dark" backgroundColor={Colors.primary} />
       <Stack
         screenOptions={{
@@ -47,6 +48,6 @@ export default function RootLayout() {
         <Stack.Screen name="settings" />
         <Stack.Screen name="about" />
       </Stack>
-    </>
+    </SecretsProvider>
   );
 }
