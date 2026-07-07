@@ -8,24 +8,53 @@ import Animated, {
   withTiming,
   runOnJS,
 } from 'react-native-reanimated';
-import { CheckCircle } from 'lucide-react-native';
+import { AlertCircle, CheckCircle, Info } from 'lucide-react-native';
 import { Colors, FontFamily, FontSize, Border, Spacing, IconSize } from '../constants';
+
+export type ToastVariant = 'success' | 'error' | 'info';
 
 interface PixelToastProps {
   visible: boolean;
   message?: string;
+  variant?: ToastVariant;
   onHide: () => void;
   duration?: number;
 }
 
+const VARIANT_STYLES: Record<
+  ToastVariant,
+  { backgroundColor: string; borderColor: string; Icon: typeof CheckCircle }
+> = {
+  success: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.border,
+    Icon: CheckCircle,
+  },
+  error: {
+    backgroundColor: Colors.danger,
+    borderColor: '#CC4444',
+    Icon: AlertCircle,
+  },
+  info: {
+    backgroundColor: Colors.warning,
+    borderColor: Colors.border,
+    Icon: Info,
+  },
+};
+
 export const PixelToast: React.FC<PixelToastProps> = ({
   visible,
   message = '✓ Copied Successfully',
+  variant = 'success',
   onHide,
   duration = 2000,
 }) => {
   const translateY = useSharedValue(100);
   const opacity = useSharedValue(0);
+  const variantStyle = VARIANT_STYLES[variant];
+  const IconComponent = variantStyle.Icon;
+  const textColor = variant === 'error' ? Colors.white : Colors.darkGreen;
+  const iconColor = variant === 'error' ? Colors.white : Colors.darkGreen;
 
   useEffect(() => {
     if (visible) {
@@ -42,7 +71,7 @@ export const PixelToast: React.FC<PixelToastProps> = ({
         })
       );
     }
-  }, [visible]);
+  }, [visible, duration, onHide, opacity, translateY]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
@@ -52,9 +81,19 @@ export const PixelToast: React.FC<PixelToastProps> = ({
   if (!visible) return null;
 
   return (
-    <Animated.View style={[styles.toast, animatedStyle]} pointerEvents="none">
-      <CheckCircle size={IconSize.sm} color={Colors.darkGreen} />
-      <Text style={styles.message}>{message}</Text>
+    <Animated.View
+      style={[
+        styles.toast,
+        {
+          backgroundColor: variantStyle.backgroundColor,
+          borderColor: variantStyle.borderColor,
+        },
+        animatedStyle,
+      ]}
+      pointerEvents="none"
+    >
+      <IconComponent size={IconSize.sm} color={iconColor} />
+      <Text style={[styles.message, { color: textColor }]}>{message}</Text>
     </Animated.View>
   );
 };
@@ -66,9 +105,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.primary,
     borderWidth: Border.width,
-    borderColor: Colors.border,
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.sm,
     gap: Spacing.sm,
@@ -82,6 +119,5 @@ const styles = StyleSheet.create({
   message: {
     fontFamily: FontFamily.pixelBold,
     fontSize: FontSize.sm,
-    color: Colors.darkGreen,
   },
 });

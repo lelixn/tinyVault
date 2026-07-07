@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   FlatList,
+  ListRenderItem,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -14,6 +15,7 @@ import {
   SearchBar,
   CategoryChip,
   SecretCard,
+  SecretCardSkeleton,
   FloatingButton,
   EmptyState,
   PixelToast,
@@ -23,20 +25,28 @@ import {
   PixelButton,
   PixelCheckbox,
 } from '../src/components';
+import type { ToastVariant } from '../src/components/PixelToast';
 import { CATEGORIES } from '../src/utils/mockData';
 import { Secret, SecretCategory } from '../src/types';
 import { Colors, FontFamily, FontSize, Border, Spacing, IconSize } from '../src/constants';
-import { useSecrets } from '../src/hooks/useSecrets';
+import { useVault } from '../src/hooks/useVault';
 import { filterSecrets } from '../src/utils/secrets';
 import { copyToClipboard } from '../src/utils/clipboard';
+import {
+  triggerSelectionHaptic,
+  triggerSuccessHaptic,
+} from '../src/utils/haptics';
+
+const SKELETON_COUNT = 4;
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { secrets, updateSecret, deleteSecret } = useSecrets();
+  const { secrets, settings, isLoading, updateSecret, deleteSecret } = useVault();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<SecretCategory>('All');
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('✓ Copied Successfully');
+  const [toastVariant, setToastVariant] = useState<ToastVariant>('success');
   const [deleteDialog, setDeleteDialog] = useState<{ visible: boolean; secretId: string | null }>({
     visible: false,
     secretId: null,
@@ -50,40 +60,70 @@ export default function HomeScreen() {
   const [editNotes, setEditNotes] = useState('');
   const [editPinned, setEditPinned] = useState(false);
 
+  const defaultRevealed = !settings.defaultHidden;
+
   const filteredSecrets = useMemo(
     () => filterSecrets(secrets, searchQuery, selectedCategory),
     [secrets, searchQuery, selectedCategory]
   );
 
-  const handleCopy = async (value: string) => {
-    await copyToClipboard(value);
-    setToastMessage('✓ Copied Successfully');
+  const showSuccessToast = useCallback((message: string) => {
+    setToastVariant('success');
+    setToastMessage(message);
     setShowToast(true);
-  };
+  }, []);
 
-  const handleDeletePress = (secretId: string) => {
-    setDeleteDialog({ visible: true, secretId });
-  };
-
-  const handleDeleteConfirm = async () => {
-    if (deleteDialog.secretId) {
-      await deleteSecret(deleteDialog.secretId);
-      setDeleteDialog({ visible: false, secretId: null });
-      setToastMessage('✓ Secret Deleted');
+  const handleCopy = useCallback(async (value: string) => {
+    try {
+      await copyToClipboard(value);
+      await triggerSuccessHaptic(settings.hapticFeedback);
+      showSuccessToast('✓ Copied Successfully');
+    } catch {
+      setToastVariant('error');
+      setToastMessage('Failed to copy to clipboard');
       setShowToast(true);
     }
-  };
+  }, [settings.hapticFeedback, showSuccessToast]);
 
-  const handleEditPress = (secret: Secret) => {
+  const handleDeletePress = useCallback((secretId: string) => {
+    setDeleteDialog({ visible: true, secretId });
+  }, []);
+
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!deleteDialog.secretId) return;
+
+    try {
+      await deleteSecret(deleteDialog.secretId);
+      setDeleteDialog({ visible: false, secretId: null });
+      await triggerSuccessHaptic(settings.hapticFeedback);
+      showSuccessToast('✓ Secret Deleted');
+    } catch {
+      setDeleteDialog({ visible: false, secretId: null });
+      setToastVariant('error');
+      setToastMessage('Failed to delete secret');
+      setShowToast(true);
+    }
+  }, [deleteDialog.secretId, deleteSecret, settings.hapticFeedback, showSuccessToast]);
+
+  const handleEditPress = useCallback((secret: Secret) => {
     setEditTitle(secret.title);
     setEditValue(secret.value);
     setEditNotes(secret.notes || '');
     setEditPinned(secret.pinned);
     setEditModal({ visible: true, secret });
-  };
+  }, []);
 
-  const handleEditSave = async () => {
-    if (editModal.secret) {
+  const handleEditSave = useCallback(async () => {
+    if (!editModal.secret) return;
+
+    if (!editTitle.trim() || !editValue.trim()) {
+      setToastVariant('error');
+      setToastMessage('Title and secret value are required');
+      setShowToast(true);
+      return;
+    }
+
+    try {
       await updateSecret(editModal.secret.id, {
         title: editTitle,
         value: editValue,
@@ -91,10 +131,60 @@ export default function HomeScreen() {
         pinned: editPinned,
       });
       setEditModal({ visible: false, secret: null });
-      setToastMessage('✓ Secret Updated');
+      await triggerSuccessHaptic(settings.hapticFeedback);
+      showSuccessToast('✓ Secret Updated');
+    } catch {
+      setToastVariant('error');
+      setToastMessage('Failed to update secret');
       setShowToast(true);
     }
-  };
+  }, [
+    editModal.secret,
+    editTitle,
+    editValue,
+    editNotes,
+    editPinned,
+    updateSecret,
+    settings.hapticFeedback,
+    showSuccessToast,
+  ]);
+
+  const handleShowToggle = useCallback(async () => {
+    await triggerSelectionHaptic(settings.hapticFeedback);
+  }, [settings.hapticFeedback]);
+
+  const renderItem: ListRenderItem<Secret> = useCallback(
+    ({ item, index }) => (
+      <SecretCard
+        secret={item}
+        index={index}
+        defaultRevealed={defaultRevealed}
+        onShow={handleShowToggle}
+        onCopy={() => handleCopy(item.value)}
+        onEdit={() => handleEditPress(item)}
+        onDelete={() => handleDeletePress(item.id)}
+        onPress={() =>
+          router.push({
+            pathname: '/details',
+            params: { id: item.id },
+          })
+        }
+      />
+    ),
+    [
+      defaultRevealed,
+      handleShowToggle,
+      handleCopy,
+      handleEditPress,
+      handleDeletePress,
+      router,
+    ]
+  );
+
+  const keyExtractor = useCallback((item: Secret) => item.id, []);
+
+  const listEmpty = !isLoading && filteredSecrets.length === 0;
+  const showSkeleton = isLoading;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -157,7 +247,7 @@ export default function HomeScreen() {
       {/* Secret Count */}
       <View style={styles.countRow}>
         <Text style={styles.countText}>
-          {filteredSecrets.length} SECRET{filteredSecrets.length !== 1 ? 'S' : ''}
+          {isLoading ? '...' : filteredSecrets.length} SECRET{filteredSecrets.length !== 1 ? 'S' : ''}
         </Text>
         <View style={styles.secureTag}>
           <Text style={styles.secureText}>🔒 OFFLINE</Text>
@@ -165,12 +255,20 @@ export default function HomeScreen() {
       </View>
 
       {/* Secret List */}
-      {filteredSecrets.length === 0 ? (
+      {showSkeleton ? (
+        <View style={styles.listContent}>
+          {Array.from({ length: SKELETON_COUNT }, (_, index) => (
+            <SecretCardSkeleton key={`skeleton-${index}`} index={index} />
+          ))}
+        </View>
+      ) : listEmpty ? (
         <EmptyState
           title="No Secrets Found"
           description={
-            searchQuery
-              ? `No secrets match "${searchQuery}"`
+            searchQuery || selectedCategory !== 'All'
+              ? searchQuery
+                ? `No secrets match "${searchQuery}"`
+                : `No secrets in ${selectedCategory}`
               : 'Store passwords, notes and important information securely.'
           }
           onAction={() => router.push('/add')}
@@ -179,35 +277,26 @@ export default function HomeScreen() {
       ) : (
         <FlatList
           data={filteredSecrets}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item, index }) => (
-            <SecretCard
-              secret={item}
-              index={index}
-              onCopy={() => handleCopy(item.value)}
-              onEdit={() => handleEditPress(item)}
-              onDelete={() => handleDeletePress(item.id)}
-              onPress={() =>
-                router.push({
-                  pathname: '/details',
-                  params: { id: item.id },
-                })
-              }
-            />
-          )}
+          keyExtractor={keyExtractor}
+          renderItem={renderItem}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           style={styles.list}
+          initialNumToRender={8}
+          maxToRenderPerBatch={10}
+          windowSize={7}
+          removeClippedSubviews
         />
       )}
 
       {/* Floating Action Button */}
-      <FloatingButton onPress={() => router.push('/add')} />
+      {!isLoading && <FloatingButton onPress={() => router.push('/add')} />}
 
       {/* Toast */}
       <PixelToast
         visible={showToast}
         message={toastMessage}
+        variant={toastVariant}
         onHide={() => setShowToast(false)}
       />
 

@@ -6,6 +6,7 @@ export { PixelSwitch } from './PixelSwitch';
 export { PixelBadge } from './PixelBadge';
 export { SearchBar } from './SearchBar';
 export { SecretCard } from './SecretCard';
+export { SecretCardSkeleton } from './SecretCardSkeleton';
 export { CategoryChip } from './CategoryChip';
 export { PixelModal } from './PixelModal';
 export { PixelToast } from './PixelToast';

@@ -19,47 +19,65 @@ import {
   PixelToast,
   Divider,
 } from '../src/components';
+import type { ToastVariant } from '../src/components/PixelToast';
 import { CATEGORIES, CATEGORY_COLORS } from '../src/utils/mockData';
-import { SecretCategory } from '../src/types';
+import { SecretCategoryValue } from '../src/types';
 import { Colors, FontFamily, FontSize, Border, Spacing, IconSize } from '../src/constants';
-import { useSecrets } from '../src/hooks/useSecrets';
+import { useVault } from '../src/hooks/useVault';
+import { triggerSuccessHaptic } from '../src/utils/haptics';
+import { isValidCategory } from '../src/storage/vaultStorage';
 
 export default function AddScreen() {
   const router = useRouter();
-  const { createSecret } = useSecrets();
+  const { addSecret, settings } = useVault();
 
   const [title, setTitle] = useState('');
   const [secretValue, setSecretValue] = useState('');
-  const [category, setCategory] = useState<SecretCategory>('Passwords');
+  const [category, setCategory] = useState<SecretCategoryValue>('Passwords');
   const [notes, setNotes] = useState('');
   const [pinned, setPinned] = useState(false);
   const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('✓ Secret Saved!');
+  const [toastVariant, setToastVariant] = useState<ToastVariant>('success');
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [errors, setErrors] = useState<{ title?: string; value?: string }>({});
+  const [errors, setErrors] = useState<{ title?: string; value?: string; category?: string }>({});
+  const [isSaving, setIsSaving] = useState(false);
 
   const categories = CATEGORIES.filter((c) => c.label !== 'All');
 
   const validate = () => {
-    const newErrors: { title?: string; value?: string } = {};
+    const newErrors: { title?: string; value?: string; category?: string } = {};
     if (!title.trim()) newErrors.title = 'Title is required';
     if (!secretValue.trim()) newErrors.value = 'Secret value is required';
+    if (!isValidCategory(category)) newErrors.category = 'Category is required';
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handleSave = async () => {
-    if (!validate()) return;
+    if (!validate() || isSaving) return;
 
-    await createSecret({
-      title,
-      value: secretValue,
-      category,
-      notes: notes.trim() || undefined,
-      pinned,
-    });
-
-    setShowToast(true);
-    setTimeout(() => router.back(), 1500);
+    setIsSaving(true);
+    try {
+      await addSecret({
+        title,
+        value: secretValue,
+        category,
+        notes: notes.trim() || undefined,
+        pinned,
+      });
+      await triggerSuccessHaptic(settings.hapticFeedback);
+      setToastVariant('success');
+      setToastMessage('✓ Secret Saved!');
+      setShowToast(true);
+      setTimeout(() => router.back(), 1500);
+    } catch {
+      setToastVariant('error');
+      setToastMessage('Failed to save secret');
+      setShowToast(true);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -140,7 +158,9 @@ export default function AddScreen() {
                     <TouchableOpacity
                       key={cat.label}
                       onPress={() => {
-                        setCategory(cat.label);
+                        if (cat.label !== 'All') {
+                          setCategory(cat.label);
+                        }
                         setDropdownOpen(false);
                       }}
                       style={[
@@ -166,6 +186,9 @@ export default function AddScreen() {
                   ))}
                 </View>
               )}
+              {errors.category ? (
+                <Text style={styles.errorText}>{errors.category}</Text>
+              ) : null}
             </View>
 
             <PixelInput
@@ -202,6 +225,8 @@ export default function AddScreen() {
               onPress={handleSave}
               variant="primary"
               style={styles.actionBtn}
+              loading={isSaving}
+              disabled={isSaving}
             />
           </View>
 
@@ -216,7 +241,8 @@ export default function AddScreen() {
 
       <PixelToast
         visible={showToast}
-        message="✓ Secret Saved!"
+        message={toastMessage}
+        variant={toastVariant}
         onHide={() => setShowToast(false)}
         duration={1500}
       />
@@ -330,6 +356,12 @@ const styles = StyleSheet.create({
   dropdownItemTextSelected: {
     color: Colors.darkGreen,
     fontFamily: FontFamily.pixelBold,
+  },
+  errorText: {
+    fontFamily: FontFamily.pixel,
+    fontSize: FontSize.xs,
+    color: Colors.danger,
+    marginTop: Spacing.xs,
   },
   actions: {
     flexDirection: 'row',

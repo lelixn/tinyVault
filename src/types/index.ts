@@ -1,34 +1,15 @@
-export type SecretCategory =
-  | 'All'
-  | 'Passwords'
-  | 'WiFi'
-  | 'Bank'
-  | 'Documents'
-  | 'API Keys'
-  | 'Notes';
+export type {
+  Secret,
+  SecretCategory,
+  SecretCategoryValue,
+  CreateSecretInput,
+  UpdateSecretInput,
+} from './Secret';
 
-export interface Secret {
-  id: string;
-  title: string;
-  value: string;
-  category: SecretCategory;
-  notes?: string;
-  pinned: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
+export type { VaultSettings } from './Settings';
+export { DEFAULT_VAULT_SETTINGS } from './Settings';
 
-export type CreateSecretInput = {
-  title: string;
-  value: string;
-  category: Exclude<SecretCategory, 'All'>;
-  notes?: string;
-  pinned?: boolean;
-};
-
-export type UpdateSecretInput = Partial<
-  Pick<Secret, 'title' | 'value' | 'category' | 'notes' | 'pinned'>
->;
+import type { SecretCategory } from './Secret';
 
 export interface Category {
   id: string;

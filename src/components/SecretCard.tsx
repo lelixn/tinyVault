@@ -1,10 +1,9 @@
-import React, { useState } from 'react';
+import React, { memo, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  Alert,
 } from 'react-native';
 import Animated, {
   FadeInDown,
@@ -19,16 +18,15 @@ import {
   Copy,
   Pencil,
   Trash2,
-  ChevronRight,
 } from 'lucide-react-native';
 import { Colors, FontFamily, FontSize, Border, Spacing, IconSize } from '../constants';
 import { Secret } from '../types';
-import { CATEGORY_COLORS } from '../utils/mockData';
 import { PixelBadge } from './PixelBadge';
 
 interface SecretCardProps {
   secret: Secret;
   index?: number;
+  defaultRevealed?: boolean;
   onShow?: () => void;
   onCopy?: () => void;
   onEdit?: () => void;
@@ -36,16 +34,17 @@ interface SecretCardProps {
   onPress?: () => void;
 }
 
-export const SecretCard: React.FC<SecretCardProps> = ({
+const SecretCardComponent: React.FC<SecretCardProps> = ({
   secret,
   index = 0,
+  defaultRevealed = false,
   onShow,
   onCopy,
   onEdit,
   onDelete,
   onPress,
 }) => {
-  const [revealed, setRevealed] = useState(false);
+  const [revealed, setRevealed] = useState(defaultRevealed);
   const scale = useSharedValue(1);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -120,7 +119,8 @@ export const SecretCard: React.FC<SecretCardProps> = ({
         {/* Action Buttons */}
         <View style={styles.actions}>
           <TouchableOpacity
-            onPress={() => {
+            onPress={(event) => {
+              event.stopPropagation();
               setRevealed(!revealed);
               onShow?.();
             }}
@@ -136,7 +136,10 @@ export const SecretCard: React.FC<SecretCardProps> = ({
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={onCopy}
+            onPress={(event) => {
+              event.stopPropagation();
+              onCopy?.();
+            }}
             style={[styles.actionBtn, styles.actionBtnCopy]}
             accessibilityLabel="Copy value"
           >
@@ -145,7 +148,10 @@ export const SecretCard: React.FC<SecretCardProps> = ({
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={onEdit}
+            onPress={(event) => {
+              event.stopPropagation();
+              onEdit?.();
+            }}
             style={[styles.actionBtn, styles.actionBtnEdit]}
             accessibilityLabel="Edit secret"
           >
@@ -154,7 +160,10 @@ export const SecretCard: React.FC<SecretCardProps> = ({
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={onDelete}
+            onPress={(event) => {
+              event.stopPropagation();
+              onDelete?.();
+            }}
             style={[styles.actionBtn, styles.actionBtnDelete]}
             accessibilityLabel="Delete secret"
           >
@@ -262,3 +271,4 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 });
+export const SecretCard = memo(SecretCardComponent);

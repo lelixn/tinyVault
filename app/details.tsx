@@ -31,20 +31,26 @@ import {
   Divider,
 } from '../src/components';
 import { Colors, FontFamily, FontSize, Border, Spacing, IconSize } from '../src/constants';
-import { useSecrets } from '../src/hooks/useSecrets';
+import { useVault } from '../src/hooks/useVault';
 import { copyToClipboard } from '../src/utils/clipboard';
+import type { ToastVariant } from '../src/components/PixelToast';
+import {
+  triggerSelectionHaptic,
+  triggerSuccessHaptic,
+} from '../src/utils/haptics';
 
 export default function DetailsScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { getSecret, updateSecret, deleteSecret, isReady } = useSecrets();
+  const { getSecret, updateSecret, deleteSecret, isReady, settings } = useVault();
 
   const secretId = Array.isArray(id) ? id[0] : id;
   const secret = secretId ? getSecret(secretId) : undefined;
 
-  const [revealed, setRevealed] = useState(false);
+  const [revealed, setRevealed] = useState(!settings.defaultHidden);
   const [showToast, setShowToast] = useState(false);
   const [toastMsg, setToastMsg] = useState('✓ Copied!');
+  const [toastVariant, setToastVariant] = useState<ToastVariant>('success');
   const [showDelete, setShowDelete] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [editTitle, setEditTitle] = useState('');
@@ -64,9 +70,9 @@ export default function DetailsScreen() {
       setEditValue(secret.value);
       setEditNotes(secret.notes || '');
       setEditPinned(secret.pinned);
-      setRevealed(false);
+      setRevealed(!settings.defaultHidden);
     }
-  }, [secret]);
+  }, [secret, settings.defaultHidden]);
 
   if (!secret) {
     return null;
@@ -84,27 +90,63 @@ export default function DetailsScreen() {
   };
 
   const handleCopy = async () => {
-    await copyToClipboard(secret.value);
-    setToastMsg('✓ Copied to Clipboard');
-    setShowToast(true);
+    try {
+      await copyToClipboard(secret.value);
+      await triggerSuccessHaptic(settings.hapticFeedback);
+      setToastVariant('success');
+      setToastMsg('✓ Copied to Clipboard');
+      setShowToast(true);
+    } catch {
+      setToastVariant('error');
+      setToastMsg('Failed to copy to clipboard');
+      setShowToast(true);
+    }
   };
 
   const handleDelete = async () => {
-    await deleteSecret(secret.id);
-    setShowDelete(false);
-    router.back();
+    try {
+      await deleteSecret(secret.id);
+      setShowDelete(false);
+      await triggerSuccessHaptic(settings.hapticFeedback);
+      router.back();
+    } catch {
+      setShowDelete(false);
+      setToastVariant('error');
+      setToastMsg('Failed to delete secret');
+      setShowToast(true);
+    }
   };
 
   const handleEditSave = async () => {
-    await updateSecret(secret.id, {
-      title: editTitle,
-      value: editValue,
-      notes: editNotes,
-      pinned: editPinned,
-    });
-    setShowEdit(false);
-    setToastMsg('✓ Secret Updated');
-    setShowToast(true);
+    if (!editTitle.trim() || !editValue.trim()) {
+      setToastVariant('error');
+      setToastMsg('Title and secret value are required');
+      setShowToast(true);
+      return;
+    }
+
+    try {
+      await updateSecret(secret.id, {
+        title: editTitle,
+        value: editValue,
+        notes: editNotes,
+        pinned: editPinned,
+      });
+      setShowEdit(false);
+      await triggerSuccessHaptic(settings.hapticFeedback);
+      setToastVariant('success');
+      setToastMsg('✓ Secret Updated');
+      setShowToast(true);
+    } catch {
+      setToastVariant('error');
+      setToastMsg('Failed to update secret');
+      setShowToast(true);
+    }
+  };
+
+  const handleToggleReveal = async () => {
+    setRevealed(!revealed);
+    await triggerSelectionHaptic(settings.hapticFeedback);
   };
 
   return (
@@ -150,7 +192,7 @@ export default function DetailsScreen() {
           <View style={styles.valueLabelRow}>
             <Text style={styles.valueLabel}>SECRET VALUE</Text>
             <TouchableOpacity
-              onPress={() => setRevealed(!revealed)}
+              onPress={handleToggleReveal}
               style={styles.toggleBtn}
             >
               {revealed ? (
@@ -215,6 +257,13 @@ export default function DetailsScreen() {
           <Divider />
 
           <View style={styles.metaRow}>
+            <Text style={styles.metaKey}>UPDATED</Text>
+            <Text style={styles.metaValue}>{formatDate(secret.updatedAt)}</Text>
+          </View>
+
+          <Divider />
+
+          <View style={styles.metaRow}>
             <Text style={styles.metaKey}>CATEGORY</Text>
             <Text style={styles.metaValue}>{secret.category}</Text>
           </View>
@@ -253,6 +302,7 @@ export default function DetailsScreen() {
       <PixelToast
         visible={showToast}
         message={toastMsg}
+        variant={toastVariant}
         onHide={() => setShowToast(false)}
       />
 
