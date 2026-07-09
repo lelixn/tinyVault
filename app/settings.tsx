@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -27,6 +27,8 @@ import {
 } from '../src/components';
 import { Colors, FontFamily, FontSize, Border, Spacing, IconSize } from '../src/constants';
 import { APP_VERSION } from '../src/utils/mockData';
+import { useVault } from '../src/hooks/useVault';
+import { triggerErrorHaptic, triggerSelectionHaptic, triggerSuccessHaptic } from '../src/utils/haptics';
 
 interface SettingRowProps {
   icon: React.ReactNode;
@@ -37,6 +39,7 @@ interface SettingRowProps {
   onToggle?: (v: boolean) => void;
   onPress?: () => void;
   info?: string;
+  infoPressable?: boolean;
   delay?: number;
 }
 
@@ -49,6 +52,7 @@ const SettingRow: React.FC<SettingRowProps> = ({
   onToggle,
   onPress,
   info,
+  infoPressable = false,
   delay = 0,
 }) => {
   return (
@@ -84,6 +88,19 @@ const SettingRow: React.FC<SettingRowProps> = ({
           </View>
           <ChevronRight size={IconSize.sm} color={Colors.mutedText} />
         </TouchableOpacity>
+      ) : infoPressable ? (
+        <TouchableOpacity onPress={onPress} style={styles.settingRow}>
+          <View style={styles.settingLeft}>
+            <View style={styles.settingIcon}>{icon}</View>
+            <View style={styles.settingText}>
+              <Text style={styles.settingLabel}>{label}</Text>
+              {description && (
+                <Text style={styles.settingDesc}>{description}</Text>
+              )}
+            </View>
+          </View>
+          {info && <Text style={styles.infoText}>{info}</Text>}
+        </TouchableOpacity>
       ) : (
         <View style={styles.settingRow}>
           <View style={styles.settingLeft}>
@@ -104,10 +121,58 @@ const SettingRow: React.FC<SettingRowProps> = ({
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const [darkMode, setDarkMode] = useState(false);
-  const [biometric, setBiometric] = useState(true);
-  const [pinLock, setPinLock] = useState(false);
-  const [autoLock, setAutoLock] = useState(true);
+  const { settings, updateSettings, biometric, statistics } = useVault();
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  const autoLockLabel = useMemo(() => {
+    switch (settings.autoLockTimeoutSeconds) {
+      case 30:
+        return '30s';
+      case 60:
+        return '1m';
+      case 300:
+        return '5m';
+      default:
+        return 'Never';
+    }
+  }, [settings.autoLockTimeoutSeconds]);
+
+  const storageUsage = `${(statistics.approximateStorageBytes / 1024).toFixed(2)} KB`;
+
+  const cycleAutoLockDuration = async () => {
+    const options: Array<0 | 30 | 60 | 300> = [30, 60, 300, 0];
+    const currentIndex = options.indexOf(settings.autoLockTimeoutSeconds);
+    const next = options[(currentIndex + 1) % options.length];
+    await updateSettings({
+      autoLockTimeoutSeconds: next,
+      autoLock: next !== 0,
+    });
+    await triggerSelectionHaptic(settings.hapticFeedback);
+  };
+
+  const handleBiometricToggle = async (value: boolean) => {
+    if (value && (!biometric.hasHardware || !biometric.isEnrolled)) {
+      setStatusMessage(
+        !biometric.hasHardware
+          ? 'Biometric hardware is not available on this device.'
+          : 'No biometrics enrolled on this device.'
+      );
+      await triggerErrorHaptic(settings.hapticFeedback);
+      return;
+    }
+
+    await updateSettings({ biometricLock: value });
+    await triggerSuccessHaptic(settings.hapticFeedback);
+    setStatusMessage(value ? 'Biometric protection enabled.' : 'Biometric protection disabled.');
+  };
+
+  const formatCategoryStats = useMemo(() => {
+    const entries = Object.entries(statistics.categories);
+    if (!entries.length) {
+      return 'No categories yet';
+    }
+    return entries.map(([key, count]) => `${key}: ${count}`).join(' • ');
+  }, [statistics.categories]);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -130,8 +195,10 @@ export default function SettingsScreen() {
               label="Biometric Lock"
               description="Use fingerprint or face unlock"
               type="switch"
-              value={biometric}
-              onToggle={setBiometric}
+              value={settings.biometricLock}
+              onToggle={(value) => {
+                void handleBiometricToggle(value);
+              }}
               delay={60}
             />
             <Divider />
@@ -140,18 +207,23 @@ export default function SettingsScreen() {
               label="PIN Lock"
               description="Protect with a 4-digit PIN"
               type="switch"
-              value={pinLock}
-              onToggle={setPinLock}
+              value={settings.pinLock}
+              onToggle={(value) => {
+                void updateSettings({ pinLock: value });
+              }}
               delay={100}
             />
             <Divider />
             <SettingRow
               icon={<Clock size={IconSize.sm} color={Colors.darkGreen} />}
               label="Auto Lock"
-              description="Lock after 30 seconds of inactivity"
-              type="switch"
-              value={autoLock}
-              onToggle={setAutoLock}
+              description="Tap to cycle: 30s, 1m, 5m, Never"
+              type="info"
+              info={autoLockLabel}
+              infoPressable
+              onPress={() => {
+                void cycleAutoLockDuration();
+              }}
               delay={140}
             />
           </View>
@@ -169,9 +241,89 @@ export default function SettingsScreen() {
               label="Dark Mode"
               description="Switch to dark theme (UI only)"
               type="switch"
-              value={darkMode}
-              onToggle={setDarkMode}
+              value={settings.darkMode}
+              onToggle={(value) => {
+                void updateSettings({ darkMode: value });
+              }}
               delay={220}
+            />
+          </View>
+        </Animated.View>
+
+        <Animated.View
+          entering={FadeInDown.delay(500).springify().damping(15)}
+          style={styles.section}
+        >
+          <Text style={styles.sectionTitle}>📊 STATISTICS</Text>
+          <View style={styles.sectionCard}>
+            <SettingRow
+              icon={<Shield size={IconSize.sm} color={Colors.darkGreen} />}
+              label="Protected Status"
+              type="info"
+              info={statistics.protectedStatus}
+              delay={530}
+            />
+            <Divider />
+            <SettingRow
+              icon={<Info size={IconSize.sm} color={Colors.darkGreen} />}
+              label="Total Secrets"
+              type="info"
+              info={`${statistics.totalSecrets}`}
+              delay={560}
+            />
+            <Divider />
+            <SettingRow
+              icon={<Info size={IconSize.sm} color={Colors.darkGreen} />}
+              label="Pinned Secrets"
+              type="info"
+              info={`${statistics.pinnedSecrets}`}
+              delay={590}
+            />
+            <Divider />
+            <SettingRow
+              icon={<Info size={IconSize.sm} color={Colors.darkGreen} />}
+              label="Categories"
+              description={formatCategoryStats}
+              type="info"
+              info={`${Object.keys(statistics.categories).length}`}
+              delay={620}
+            />
+            <Divider />
+            <SettingRow
+              icon={<Info size={IconSize.sm} color={Colors.darkGreen} />}
+              label="Recently Added"
+              description={
+                statistics.recentlyAdded.length
+                  ? statistics.recentlyAdded.map((secret) => secret.title).join(', ')
+                  : 'No secrets yet'
+              }
+              type="info"
+              info={`${statistics.recentlyAdded.length}`}
+              delay={650}
+            />
+            <Divider />
+            <SettingRow
+              icon={<Info size={IconSize.sm} color={Colors.darkGreen} />}
+              label="Oldest Secret"
+              type="info"
+              info={statistics.oldestSecret?.title ?? '-'}
+              delay={680}
+            />
+            <Divider />
+            <SettingRow
+              icon={<Info size={IconSize.sm} color={Colors.darkGreen} />}
+              label="Newest Secret"
+              type="info"
+              info={statistics.newestSecret?.title ?? '-'}
+              delay={710}
+            />
+            <Divider />
+            <SettingRow
+              icon={<Info size={IconSize.sm} color={Colors.darkGreen} />}
+              label="Approx. Storage Usage"
+              type="info"
+              info={storageUsage}
+              delay={740}
             />
           </View>
         </Animated.View>
@@ -247,13 +399,16 @@ export default function SettingsScreen() {
           </View>
         </Animated.View>
 
-        {/* Warning Banner */}
+        {/* Status Banner */}
         <Animated.View
-          entering={FadeInDown.delay(540).springify().damping(15)}
+          entering={FadeInDown.delay(760).springify().damping(15)}
           style={styles.warningBanner}
         >
           <Text style={styles.warningText}>
-            ⚠️ This is a UI demo. Settings changes are not persisted.
+            {statusMessage ??
+              `Biometric: ${biometric.hasHardware ? 'Supported' : 'Unsupported'} • Enrolled: ${
+                biometric.isEnrolled ? 'Yes' : 'No'
+              }`}
           </Text>
         </Animated.View>
       </ScrollView>

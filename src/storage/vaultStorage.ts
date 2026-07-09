@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from '../constants';
+import { decryptValue, encryptValue } from '../security/encryption';
 import {
   CreateSecretInput,
   Secret,
@@ -9,6 +10,13 @@ import {
 } from '../types';
 import { sortSecrets } from '../utils/secrets';
 import { generateUUID } from '../utils/uuid';
+
+type StoredSecret = Omit<Secret, 'value' | 'notes'> & {
+  valueEncrypted?: string;
+  notesEncrypted?: string;
+  value?: string;
+  notes?: string;
+};
 
 const VALID_CATEGORIES: SecretCategoryValue[] = [
   'Passwords',
@@ -30,7 +38,7 @@ function isSecretCategoryValue(value: unknown): value is SecretCategoryValue {
   return typeof value === 'string' && VALID_CATEGORIES.includes(value as SecretCategoryValue);
 }
 
-function isSecret(value: unknown): value is Secret {
+function isStoredSecret(value: unknown): value is StoredSecret {
   if (!value || typeof value !== 'object') {
     return false;
   }
@@ -40,16 +48,18 @@ function isSecret(value: unknown): value is Secret {
   return (
     typeof record.id === 'string' &&
     typeof record.title === 'string' &&
-    typeof record.value === 'string' &&
+    (typeof record.valueEncrypted === 'string' || typeof record.value === 'string') &&
     isSecretCategoryValue(record.category) &&
     typeof record.pinned === 'boolean' &&
     typeof record.createdAt === 'string' &&
     typeof record.updatedAt === 'string' &&
-    (record.notes === undefined || typeof record.notes === 'string')
+    (record.notesEncrypted === undefined ||
+      typeof record.notesEncrypted === 'string' ||
+      typeof record.notes === 'string')
   );
 }
 
-function parseSecrets(raw: string | null): Secret[] {
+async function parseSecrets(raw: string | null): Promise<Secret[]> {
   if (!raw) {
     return [];
   }
@@ -61,7 +71,37 @@ function parseSecrets(raw: string | null): Secret[] {
       return [];
     }
 
-    return sortSecrets(parsed.filter(isSecret));
+    const storedSecrets = parsed.filter(isStoredSecret);
+    const decrypted = await Promise.all(
+      storedSecrets.map(async (secret): Promise<Secret | null> => {
+        try {
+          const decryptedValue = secret.valueEncrypted
+            ? await decryptValue(secret.valueEncrypted)
+            : secret.value;
+          if (typeof decryptedValue !== 'string') {
+            return null;
+          }
+
+          const decryptedNotes = secret.notesEncrypted
+            ? await decryptValue(secret.notesEncrypted)
+            : secret.notes;
+
+          return {
+            id: secret.id,
+            title: secret.title,
+            value: decryptedValue,
+            category: secret.category,
+            notes: typeof decryptedNotes === 'string' ? decryptedNotes : undefined,
+            pinned: secret.pinned,
+            createdAt: secret.createdAt,
+            updatedAt: secret.updatedAt,
+          };
+        } catch {
+          return null;
+        }
+      })
+    );
+    return sortSecrets(decrypted.filter((value): value is Secret => value !== null));
   } catch {
     return [];
   }
@@ -70,7 +110,7 @@ function parseSecrets(raw: string | null): Secret[] {
 export async function getSecrets(): Promise<Secret[]> {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEYS.SECRETS);
-    return parseSecrets(raw);
+    return await parseSecrets(raw);
   } catch {
     throw new VaultStorageError('Failed to load secrets from storage.');
   }
@@ -78,7 +118,19 @@ export async function getSecrets(): Promise<Secret[]> {
 
 export async function saveSecrets(secrets: Secret[]): Promise<void> {
   try {
-    await AsyncStorage.setItem(STORAGE_KEYS.SECRETS, JSON.stringify(sortSecrets(secrets)));
+    const encryptedSecrets: StoredSecret[] = await Promise.all(
+      sortSecrets(secrets).map(async (secret) => ({
+        id: secret.id,
+        title: secret.title,
+        valueEncrypted: await encryptValue(secret.value),
+        notesEncrypted: secret.notes ? await encryptValue(secret.notes) : undefined,
+        category: secret.category,
+        pinned: secret.pinned,
+        createdAt: secret.createdAt,
+        updatedAt: secret.updatedAt,
+      }))
+    );
+    await AsyncStorage.setItem(STORAGE_KEYS.SECRETS, JSON.stringify(encryptedSecrets));
   } catch {
     throw new VaultStorageError('Failed to save secrets to storage.');
   }

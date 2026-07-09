@@ -33,6 +33,9 @@ import { useVault } from '../src/hooks/useVault';
 import { filterSecrets } from '../src/utils/secrets';
 import { copyToClipboard } from '../src/utils/clipboard';
 import {
+  triggerCopyHaptic,
+  triggerDeleteHaptic,
+  triggerErrorHaptic,
   triggerSelectionHaptic,
   triggerSuccessHaptic,
 } from '../src/utils/haptics';
@@ -76,9 +79,10 @@ export default function HomeScreen() {
   const handleCopy = useCallback(async (value: string) => {
     try {
       await copyToClipboard(value);
-      await triggerSuccessHaptic(settings.hapticFeedback);
+      await triggerCopyHaptic(settings.hapticFeedback);
       showSuccessToast('✓ Copied Successfully');
     } catch {
+      await triggerErrorHaptic(settings.hapticFeedback);
       setToastVariant('error');
       setToastMessage('Failed to copy to clipboard');
       setShowToast(true);
@@ -95,9 +99,10 @@ export default function HomeScreen() {
     try {
       await deleteSecret(deleteDialog.secretId);
       setDeleteDialog({ visible: false, secretId: null });
-      await triggerSuccessHaptic(settings.hapticFeedback);
+      await triggerDeleteHaptic(settings.hapticFeedback);
       showSuccessToast('✓ Secret Deleted');
     } catch {
+      await triggerErrorHaptic(settings.hapticFeedback);
       setDeleteDialog({ visible: false, secretId: null });
       setToastVariant('error');
       setToastMessage('Failed to delete secret');
@@ -134,6 +139,7 @@ export default function HomeScreen() {
       await triggerSuccessHaptic(settings.hapticFeedback);
       showSuccessToast('✓ Secret Updated');
     } catch {
+      await triggerErrorHaptic(settings.hapticFeedback);
       setToastVariant('error');
       setToastMessage('Failed to update secret');
       setShowToast(true);

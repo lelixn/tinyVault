@@ -24,7 +24,7 @@ import { CATEGORIES, CATEGORY_COLORS } from '../src/utils/mockData';
 import { SecretCategoryValue } from '../src/types';
 import { Colors, FontFamily, FontSize, Border, Spacing, IconSize } from '../src/constants';
 import { useVault } from '../src/hooks/useVault';
-import { triggerSuccessHaptic } from '../src/utils/haptics';
+import { triggerErrorHaptic, triggerSuccessHaptic } from '../src/utils/haptics';
 import { isValidCategory } from '../src/storage/vaultStorage';
 
 export default function AddScreen() {
@@ -72,6 +72,7 @@ export default function AddScreen() {
       setShowToast(true);
       setTimeout(() => router.back(), 1500);
     } catch {
+      await triggerErrorHaptic(settings.hapticFeedback);
       setToastVariant('error');
       setToastMessage('Failed to save secret');
       setShowToast(true);

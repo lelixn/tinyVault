@@ -15,6 +15,10 @@ function isVaultSettings(value: unknown): value is VaultSettings {
     typeof record.darkMode === 'boolean' &&
     typeof record.hapticFeedback === 'boolean' &&
     typeof record.autoLock === 'boolean' &&
+    (record.autoLockTimeoutSeconds === 0 ||
+      record.autoLockTimeoutSeconds === 30 ||
+      record.autoLockTimeoutSeconds === 60 ||
+      record.autoLockTimeoutSeconds === 300) &&
     typeof record.biometricLock === 'boolean' &&
     typeof record.pinLock === 'boolean'
   );
@@ -27,7 +31,26 @@ function parseSettings(raw: string | null): VaultSettings {
 
   try {
     const parsed: unknown = JSON.parse(raw);
-    return isVaultSettings(parsed) ? { ...DEFAULT_VAULT_SETTINGS, ...parsed } : DEFAULT_VAULT_SETTINGS;
+    if (isVaultSettings(parsed)) {
+      return { ...DEFAULT_VAULT_SETTINGS, ...parsed };
+    }
+
+    if (parsed && typeof parsed === 'object') {
+      const legacy = parsed as Partial<VaultSettings>;
+      return {
+        ...DEFAULT_VAULT_SETTINGS,
+        ...legacy,
+        autoLockTimeoutSeconds:
+          legacy.autoLockTimeoutSeconds === 0 ||
+          legacy.autoLockTimeoutSeconds === 30 ||
+          legacy.autoLockTimeoutSeconds === 60 ||
+          legacy.autoLockTimeoutSeconds === 300
+            ? legacy.autoLockTimeoutSeconds
+            : DEFAULT_VAULT_SETTINGS.autoLockTimeoutSeconds,
+      };
+    }
+
+    return DEFAULT_VAULT_SETTINGS;
   } catch {
     return DEFAULT_VAULT_SETTINGS;
   }

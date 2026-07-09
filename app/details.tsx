@@ -35,6 +35,9 @@ import { useVault } from '../src/hooks/useVault';
 import { copyToClipboard } from '../src/utils/clipboard';
 import type { ToastVariant } from '../src/components/PixelToast';
 import {
+  triggerCopyHaptic,
+  triggerDeleteHaptic,
+  triggerErrorHaptic,
   triggerSelectionHaptic,
   triggerSuccessHaptic,
 } from '../src/utils/haptics';
@@ -92,11 +95,12 @@ export default function DetailsScreen() {
   const handleCopy = async () => {
     try {
       await copyToClipboard(secret.value);
-      await triggerSuccessHaptic(settings.hapticFeedback);
+      await triggerCopyHaptic(settings.hapticFeedback);
       setToastVariant('success');
       setToastMsg('✓ Copied to Clipboard');
       setShowToast(true);
     } catch {
+      await triggerErrorHaptic(settings.hapticFeedback);
       setToastVariant('error');
       setToastMsg('Failed to copy to clipboard');
       setShowToast(true);
@@ -107,9 +111,10 @@ export default function DetailsScreen() {
     try {
       await deleteSecret(secret.id);
       setShowDelete(false);
-      await triggerSuccessHaptic(settings.hapticFeedback);
+      await triggerDeleteHaptic(settings.hapticFeedback);
       router.back();
     } catch {
+      await triggerErrorHaptic(settings.hapticFeedback);
       setShowDelete(false);
       setToastVariant('error');
       setToastMsg('Failed to delete secret');
@@ -138,6 +143,7 @@ export default function DetailsScreen() {
       setToastMsg('✓ Secret Updated');
       setShowToast(true);
     } catch {
+      await triggerErrorHaptic(settings.hapticFeedback);
       setToastVariant('error');
       setToastMsg('Failed to update secret');
       setShowToast(true);

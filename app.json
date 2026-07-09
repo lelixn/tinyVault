@@ -28,7 +28,19 @@
     },
     "plugins": [
       "expo-router",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": "Allow TinyVault to access biometric data for secure vault protection."
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow TinyVault to use Face ID to unlock your vault."
+        }
+      ]
     ]
   }
 }
